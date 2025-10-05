@@ -6,7 +6,7 @@
 """
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from datetime import datetime
 
 # This is the file where all expenses are stored.
@@ -114,7 +114,7 @@ elif choice == "Summary":
 
             # CATEGORY-WISE PIE CHART
             # Uses Matplotlib to create a pie chart showing how much you spent in each category
-            cat_sum = filtered.groupby("Category")["Amount"].sum().sort_values(ascending=False)
+           """ cat_sum = filtered.groupby("Category")["Amount"].sum().sort_values(ascending=False)
             fig1, ax1 = plt.subplots(figsize=(5, 5))
             ax1.pie(cat_sum, labels=cat_sum.index, autopct="%1.1f%%", startangle=90, counterclock=False)
             ax1.set_title("Spending by Category")
@@ -131,6 +131,7 @@ elif choice == "Summary":
             ax2.set_ylabel("Amount (₹)")
             plt.xticks(rotation=45)
             st.pyplot(fig2)
+            """
 
             # Show table
             # Displays the filtered data table (for the chosen period).
