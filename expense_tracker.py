@@ -1,186 +1,103 @@
-#!/usr/bin/env python3
-"""
-Personal Expense Tracker (CLI)
-- Stores data to expenses.csv
-- Add expenses, view all, weekly/monthly summaries, export CSV
-Dependencies: pandas
-"""
-
-import sys
-import os
+import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 CSV_FILE = "expenses.csv"
-DATE_FMT = "%Y-%m-%d"
 
-# Ensure CSV exists with correct headers
+# Ensure file exists
 def ensure_csv():
-    if not os.path.exists(CSV_FILE):
-        df = pd.DataFrame(columns=["date", "category", "amount", "description"])
+    try:
+        df = pd.read_csv(CSV_FILE)
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=["Date", "Category", "Amount", "Description"])
         df.to_csv(CSV_FILE, index=False)
-
-def load_df():
-    ensure_csv()
-    df = pd.read_csv(CSV_FILE, parse_dates=["date"])
-    # Ensure types
-    df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
-    df["category"] = df["category"].fillna("Other")
-    df["description"] = df["description"].fillna("")
     return df
 
-def save_df(df):
-    df.to_csv(CSV_FILE, index=False, date_format=DATE_FMT)
+def load_data():
+    df = ensure_csv()
+    if not df.empty:
+        df["Date"] = pd.to_datetime(df["Date"])
+    return df
 
-def add_expense():
-    print("\nAdd a new expense (leave description empty if none).")
-    date_in = input(f"Date [{datetime.today().strftime(DATE_FMT)}] (YYYY-MM-DD): ").strip()
-    if date_in == "":
-        date = datetime.today().date()
-    else:
-        try:
-            date = datetime.strptime(date_in, DATE_FMT).date()
-        except ValueError:
-            print("Invalid date format. Use YYYY-MM-DD.")
-            return
+def save_data(df):
+    df.to_csv(CSV_FILE, index=False)
 
-    category = input("Category (food/rent/travel/bills/entertainment/other): ").strip()
-    if category == "":
-        category = "Other"
+# ---------------- STREAMLIT APP ----------------
+st.set_page_config(page_title="Expense Tracker", page_icon="💰")
+st.title("💰 Personal Expense Tracker")
+st.write("Track your expenses, view summaries, and visualize your spending trends.")
 
-    amt_raw = input("Amount (numbers only): ").strip()
-    try:
-        amount = float(amt_raw)
-    except:
-        print("Invalid amount.")
-        return
+menu = ["Add Expense", "View All", "Summary"]
+choice = st.sidebar.selectbox("Menu", menu)
 
-    desc = input("Description (optional): ").strip()
+# ---------------- ADD EXPENSE ----------------
+if choice == "Add Expense":
+    st.subheader("➕ Add a New Expense")
 
-    df = load_df()
-    new = {"date": pd.to_datetime(date), "category": category.title(), "amount": amount, "description": desc}
-    df = df.append(new, ignore_index=True)
-    save_df(df)
-    print("Expense added.\n")
+    date = st.date_input("Date", datetime.today())
+    category = st.selectbox("Category", ["Food", "Rent", "Travel", "Bills", "Entertainment", "Other"])
+    amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
+    description = st.text_input("Description (optional)")
 
-def view_all():
-    df = load_df()
+    if st.button("Add Expense"):
+        new_row = {"Date": date, "Category": category, "Amount": amount, "Description": description}
+        df = load_data()
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        save_data(df)
+        st.success("✅ Expense added successfully!")
+
+# ---------------- VIEW ALL ----------------
+elif choice == "View All":
+    st.subheader("📋 All Expenses")
+    df = load_data()
     if df.empty:
-        print("\nNo expenses recorded yet.\n")
-        return
-    df_sorted = df.sort_values("date", ascending=False)
-    print("\nAll expenses (latest first):\n")
-    print(df_sorted.to_string(index=False, columns=["date", "category", "amount", "description"]))
-    print()
+        st.warning("No expenses recorded yet.")
+    else:
+        st.dataframe(df.sort_values("Date", ascending=False))
+        total = df["Amount"].sum()
+        st.info(f"💵 Total Spent: ₹{total:.2f}")
 
-def summary_period(days=None, month=None, year=None):
-    """If days provided -> last `days` days summary.
-       Else if month/year provided -> that month summary.
-       Else -> error."""
-    df = load_df()
+# ---------------- SUMMARY ----------------
+elif choice == "Summary":
+    st.subheader("📊 Expense Summary")
+    df = load_data()
+
     if df.empty:
-        print("\nNo expenses to summarize.\n")
-        return
-
-    if days is not None:
-        end = pd.Timestamp(datetime.today().date())
-        start = end - pd.Timedelta(days=days-1)  # include today
-        mask = (df["date"] >= start) & (df["date"] <= end)
-        label = f"Last {days} days ({start.date()} to {end.date()})"
+        st.warning("No data to summarize.")
     else:
-        # month & year
-        start = pd.Timestamp(year=year, month=month, day=1)
-        # compute end of month
-        if month == 12:
-            end = pd.Timestamp(year=year+1, month=1, day=1) - pd.Timedelta(days=1)
+        period = st.selectbox("Select Period", ["Weekly (7 days)", "Monthly (30 days)", "All Time"])
+        if period == "Weekly (7 days)":
+            start_date = datetime.today() - pd.Timedelta(days=7)
+            filtered = df[df["Date"] >= start_date]
+        elif period == "Monthly (30 days)":
+            start_date = datetime.today() - pd.Timedelta(days=30)
+            filtered = df[df["Date"] >= start_date]
         else:
-            end = pd.Timestamp(year=year, month=month+1, day=1) - pd.Timedelta(days=1)
-        mask = (df["date"] >= start) & (df["date"] <= end)
-        label = f"{start.strftime('%B %Y')}"
+            filtered = df
 
-    sub = df.loc[mask]
-    if sub.empty:
-        print(f"\nNo expenses in {label}.\n")
-        return
-
-    total = sub["amount"].sum()
-    count = len(sub)
-    by_cat = sub.groupby("category", as_index=False)["amount"].sum().sort_values("amount", ascending=False)
-
-    print(f"\nSummary for: {label}")
-    print(f"Total expenses: ₹{total:.2f} across {count} entries")
-    print("\nBy category:")
-    for _, row in by_cat.iterrows():
-        pct = (row["amount"] / total) * 100
-        print(f"  - {row['category']}: ₹{row['amount']:.2f} ({pct:.1f}%)")
-    print("\nTop 5 recent entries:")
-    rec = sub.sort_values("date", ascending=False).head(5)
-    print(rec.to_string(index=False, columns=["date", "category", "amount", "description"]))
-    print()
-
-def prompt_summary():
-    print("\nChoose summary type:")
-    print("1. Weekly (last 7 days)")
-    print("2. Monthly (current month)")
-    print("3. Monthly for specific month")
-    choice = input("Enter choice [1/2/3]: ").strip()
-    if choice == "1":
-        summary_period(days=7)
-    elif choice == "2":
-        today = datetime.today()
-        summary_period(month=today.month, year=today.year)
-    elif choice == "3":
-        mm = input("Enter month [1-12]: ").strip()
-        yy = input("Enter year [e.g., 2025]: ").strip()
-        try:
-            m = int(mm); y = int(yy)
-            if 1 <= m <= 12:
-                summary_period(month=m, year=y)
-            else:
-                print("Invalid month.")
-        except:
-            print("Invalid inputs.")
-    else:
-        print("Invalid choice.")
-
-def export_csv():
-    path = input("Enter filename to export to (e.g., my_expenses.csv): ").strip()
-    if path == "":
-        print("No filename given.")
-        return
-    df = load_df()
-    df.to_csv(path, index=False, date_format=DATE_FMT)
-    print(f"Exported to {path}")
-
-def interactive_menu():
-    print("Welcome to Personal Expense Tracker")
-    ensure_csv()
-    while True:
-        print("\nMenu:")
-        print("1. Add expense")
-        print("2. View all expenses")
-        print("3. Weekly/Monthly summary")
-        print("4. Export CSV")
-        print("5. Exit")
-        c = input("Choose option [1-5]: ").strip()
-        if c == "1":
-            add_expense()
-        elif c == "2":
-            view_all()
-        elif c == "3":
-            prompt_summary()
-        elif c == "4":
-            export_csv()
-        elif c == "5":
-            print("Goodbye!")
-            break
+        if filtered.empty:
+            st.warning("No expenses found for this period.")
         else:
-            print("Invalid option, try again.")
+            total = filtered["Amount"].sum()
+            st.write(f"**Total Spent:** ₹{total:.2f}")
 
-if __name__ == "__main__":
-    try:
-        interactive_menu()
-    except KeyboardInterrupt:
-        print("\nInterrupted. Bye.")
-    except Exception as e:
-        print("Error:", e)
+            # CATEGORY-WISE PIE CHART
+            cat_sum = filtered.groupby("Category")["Amount"].sum().sort_values(ascending=False)
+            fig1, ax1 = plt.subplots(figsize=(5, 5))
+            ax1.pie(cat_sum, labels=cat_sum.index, autopct="%1.1f%%", startangle=90, counterclock=False)
+            ax1.set_title("Spending by Category")
+            st.pyplot(fig1)
+
+            # DAILY EXPENSE BAR CHART
+            daily_sum = filtered.groupby(filtered["Date"].dt.date)["Amount"].sum()
+            fig2, ax2 = plt.subplots(figsize=(6, 4))
+            ax2.bar(daily_sum.index, daily_sum.values, color="skyblue")
+            ax2.set_title("Daily Spending Trend")
+            ax2.set_xlabel("Date")
+            ax2.set_ylabel("Amount (₹)")
+            plt.xticks(rotation=45)
+            st.pyplot(fig2)
+
+            # Show table
+            st.dataframe(filtered.sort_values("Date", ascending=False))
