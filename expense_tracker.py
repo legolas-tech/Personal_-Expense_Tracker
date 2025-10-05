@@ -46,14 +46,13 @@ menu = ["Add Expense", "View All", "Summary"]
 choice = st.sidebar.selectbox("Menu", menu)
 
 #-----Adding a New Expense-----
-"""what happens here: 
-   You enter data : date, category, amount, and description.
-   When you click "Add Expense", it:
-    1.Loads current CSV data.
-    2.Appends the new entry.
-    3.Saves it back to the file.
-    4.Shows a success message.
-"""    
+# what happens here: 
+#   You enter data : date, category, amount, and description.
+#   When you click "Add Expense", it:
+#   1.Loads current CSV data.
+#   2.Appends the new entry.
+#   3.Saves it back to the file.
+#   4.Shows a success message.   
    
 if choice == "Add Expense":
     st.subheader("➕ Add a New Expense")
